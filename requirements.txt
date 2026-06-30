@@ -1,0 +1,9 @@
+pandas>=2.2
+numpy>=2.0
+streamlit>=1.45
+sentence-transformers>=5.0
+faiss-cpu>=1.11
+scikit-learn
+tqdm
+openai
+python-dotenv
