@@ -1,38 +1,78 @@
+"""
+search.py
+
+Embedding-based Semantic Search
+"""
+
 from __future__ import annotations
 
 from pathlib import Path
+import sqlite3
 
 import faiss
 import numpy as np
+import pandas as pd
 from sentence_transformers import SentenceTransformer
 
-from src.database import get_tweets_by_ids
 
-DATA_DIR = Path("data")
+DB_FILE = Path("data") / "super_curve_terminal.db"
+EMBEDDINGS_FILE = Path("data") / "embeddings.npy"
+ID_MAP_FILE = Path("data") / "id_map.npy"
 
-EMBEDDINGS_PATH = DATA_DIR / "embeddings.npy"
-IDMAP_PATH = DATA_DIR / "id_map.npy"
+MODEL_NAME = "intfloat/multilingual-e5-base"
+
+
+def get_tweets_by_ids(tweet_ids: list[str]) -> pd.DataFrame:
+    if not tweet_ids:
+        return pd.DataFrame()
+
+    conn = sqlite3.connect(DB_FILE)
+
+    try:
+        placeholders = ",".join(["?"] * len(tweet_ids))
+
+        df = pd.read_sql(
+            f"""
+            SELECT *
+            FROM tweets
+            WHERE tweet_id IN ({placeholders})
+            """,
+            conn,
+            params=tweet_ids,
+        )
+
+        order = {tid: i for i, tid in enumerate(tweet_ids)}
+
+        df["rank_order"] = df["tweet_id"].astype(str).map(order)
+
+        return (
+            df.sort_values("rank_order")
+            .drop(columns=["rank_order"])
+            .reset_index(drop=True)
+        )
+
+    finally:
+        conn.close()
 
 
 class SemanticSearcher:
-    """
-    FAISSによる意味検索クラス
-    """
-
     def __init__(self):
+        if not EMBEDDINGS_FILE.exists():
+            raise FileNotFoundError(EMBEDDINGS_FILE)
 
-        self.model = SentenceTransformer(
-            "intfloat/multilingual-e5-base"
-        )
+        if not ID_MAP_FILE.exists():
+            raise FileNotFoundError(ID_MAP_FILE)
+
+        self.model = SentenceTransformer(MODEL_NAME)
 
         self.embeddings = np.load(
-            EMBEDDINGS_PATH
+            EMBEDDINGS_FILE
         ).astype("float32")
 
         self.id_map = np.load(
-            IDMAP_PATH,
-            allow_pickle=True
-        ).tolist()
+            ID_MAP_FILE,
+            allow_pickle=True,
+        ).astype(str)
 
         self.index = faiss.IndexFlatIP(
             self.embeddings.shape[1]
@@ -40,15 +80,17 @@ class SemanticSearcher:
 
         self.index.add(self.embeddings)
 
-    def semantic_search(
+    def search(
         self,
         query: str,
         top_k: int = 10,
-        threshold: float = 0.50,
-    ):
+        threshold: float = 0.0,
+    ) -> pd.DataFrame:
+
+        q = f"query: {query}"
 
         query_embedding = self.model.encode(
-            [query],
+            [q],
             normalize_embeddings=True,
         ).astype("float32")
 
@@ -58,44 +100,54 @@ class SemanticSearcher:
         )
 
         tweet_ids = []
+        score_map = {}
 
-        similarities = []
+        for score, idx in zip(scores[0], indices[0]):
 
-        for idx, score in zip(indices[0], scores[0]):
-
-            if idx == -1:
+            if idx < 0:
                 continue
 
-            if score < threshold:
+            if float(score) < threshold:
                 continue
 
-            tweet_ids.append(
-                str(self.id_map[idx])
-            )
+            tweet_id = str(self.id_map[idx])
 
-            similarities.append(
-                float(score)
-            )
-
-        if len(tweet_ids) == 0:
-            return get_tweets_by_ids([])
+            tweet_ids.append(tweet_id)
+            score_map[tweet_id] = float(score)
 
         df = get_tweets_by_ids(tweet_ids)
 
-        score_map = dict(
-            zip(tweet_ids, similarities)
-        )
+        if df.empty:
+            return df
 
-        df["score"] = (
-            df["tweet_id"]
-            .astype(str)
-            .map(score_map)
-        )
+        df["score"] = df["tweet_id"].astype(str).map(score_map)
 
         return (
-            df.sort_values(
-                "score",
-                ascending=False,
-            )
+            df.sort_values("score", ascending=False)
             .reset_index(drop=True)
         )
+
+
+def semantic_search(
+    query: str,
+    top_k: int = 10,
+    threshold: float = 0.0,
+) -> pd.DataFrame:
+
+    searcher = SemanticSearcher()
+
+    return searcher.search(
+        query=query,
+        top_k=top_k,
+        threshold=threshold,
+    )
+
+
+if __name__ == "__main__":
+
+    df = semantic_search(
+        "GEXについて",
+        top_k=5,
+    )
+
+    print(df[["tweet_id", "created_at", "score", "text"]])

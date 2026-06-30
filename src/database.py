@@ -1,104 +1,263 @@
+"""
+database.py
+
+SQLite Utility
+"""
+
 from __future__ import annotations
 
 import sqlite3
 from pathlib import Path
-from typing import Optional
 
 import pandas as pd
 
-DB_PATH = Path("data/super_curve_terminal.db")
+
+DB_FILE = Path("data") / "super_curve_terminal.db"
 
 
-def get_connection(db_path: Path | str = DB_PATH) -> sqlite3.Connection:
-    return sqlite3.connect(str(db_path))
+# --------------------------------------------------
+# Connection
+# --------------------------------------------------
 
 
-def get_tweet(tweet_id: str, db_path: Path | str = DB_PATH) -> pd.DataFrame:
-    with get_connection(db_path) as conn:
+def get_connection():
+
+    return sqlite3.connect(DB_FILE)
+
+
+# --------------------------------------------------
+# Search URL
+# --------------------------------------------------
+
+
+def get_search_url(
+    month: str,
+):
+
+    conn = get_connection()
+
+    try:
+
+        row = conn.execute(
+            """
+            SELECT search_url
+            FROM months
+            WHERE month=?
+            """,
+            (month,),
+        ).fetchone()
+
+        if row is None:
+            return None
+
+        return row[0]
+
+    finally:
+
+        conn.close()
+
+
+# --------------------------------------------------
+# Pending Months
+# --------------------------------------------------
+
+
+def get_pending_months():
+
+    conn = get_connection()
+
+    try:
+
         return pd.read_sql(
             """
             SELECT *
-            FROM tweets
-            WHERE tweet_id = ?
+            FROM months
+            WHERE status='pending'
+            ORDER BY month DESC
             """,
             conn,
-            params=[tweet_id],
         )
 
+    finally:
 
-def get_tweets_by_ids(tweet_ids: list[str], db_path: Path | str = DB_PATH) -> pd.DataFrame:
-    if not tweet_ids:
-        return pd.DataFrame()
+        conn.close()
 
-    placeholders = ",".join(["?"] * len(tweet_ids))
 
-    with get_connection(db_path) as conn:
+# --------------------------------------------------
+# Month List
+# --------------------------------------------------
+
+
+def list_months():
+
+    conn = get_connection()
+
+    try:
+
         return pd.read_sql(
-            f"""
-            SELECT *
-            FROM tweets
-            WHERE tweet_id IN ({placeholders})
-            """,
-            conn,
-            params=tweet_ids,
-        )
-
-
-def search_fts(
-    query: str,
-    month: Optional[str] = None,
-    account: Optional[str] = None,
-    limit: int = 50,
-    db_path: Path | str = DB_PATH,
-) -> pd.DataFrame:
-    sql = """
-    SELECT
-        t.*
-    FROM tweets_fts f
-    JOIN tweets t
-        ON f.tweet_id = t.tweet_id
-    WHERE tweets_fts MATCH ?
-    """
-
-    params: list[object] = [query]
-
-    if month:
-        sql += " AND t.month = ?"
-        params.append(month)
-
-    if account:
-        sql += " AND t.account = ?"
-        params.append(account)
-
-    sql += " ORDER BY t.created_at DESC LIMIT ?"
-    params.append(limit)
-
-    with get_connection(db_path) as conn:
-        return pd.read_sql(sql, conn, params=params)
-
-
-def list_months(db_path: Path | str = DB_PATH) -> list[str]:
-    with get_connection(db_path) as conn:
-        df = pd.read_sql(
             """
-            SELECT month
+            SELECT *
             FROM months
             ORDER BY month DESC
             """,
             conn,
         )
-    return df["month"].dropna().tolist()
+
+    finally:
+
+        conn.close()
 
 
-def list_accounts(db_path: Path | str = DB_PATH) -> list[str]:
-    with get_connection(db_path) as conn:
-        df = pd.read_sql(
+# --------------------------------------------------
+# Month Status
+# --------------------------------------------------
+
+
+def update_month_status(
+    month: str,
+    status: str,
+):
+
+    conn = get_connection()
+
+    try:
+
+        conn.execute(
             """
-            SELECT DISTINCT account
+            UPDATE months
+            SET
+                status=?,
+                updated_at=datetime('now','localtime')
+            WHERE month=?
+            """,
+            (
+                status,
+                month,
+            ),
+        )
+
+        conn.commit()
+
+    finally:
+
+        conn.close()
+
+
+# --------------------------------------------------
+# FTS Update
+# --------------------------------------------------
+
+def update_fts():
+    """
+    tweets テーブル → tweets_fts を完全同期する
+    """
+
+    conn = get_connection()
+
+    try:
+
+        cur = conn.cursor()
+
+        #
+        # FTSを空にする
+        #
+        cur.execute(
+            """
+            DELETE FROM tweets_fts
+            """
+        )
+
+        #
+        # tweets → FTS
+        #
+        cur.execute(
+            """
+            INSERT INTO tweets_fts
+            (
+                tweet_id,
+                account,
+                month,
+                text,
+                url
+            )
+
+            SELECT
+                tweet_id,
+                account,
+                month,
+                text,
+                url
+
             FROM tweets
-            WHERE account IS NOT NULL
-            ORDER BY account
+
+            ORDER BY created_at
+            """
+        )
+
+        conn.commit()
+
+        count = conn.execute(
+            """
+            SELECT COUNT(*)
+            FROM tweets_fts
+            """
+        ).fetchone()[0]
+
+        print("=" * 60)
+        print("FTS Update Complete")
+        print("=" * 60)
+        print(f"Rows : {count}")
+
+    finally:
+
+        conn.close()
+
+
+# --------------------------------------------------
+# Tweet List
+# --------------------------------------------------
+
+
+def list_tweets():
+
+    conn = get_connection()
+
+    try:
+
+        return pd.read_sql(
+            """
+            SELECT *
+            FROM tweets
+            ORDER BY created_at DESC
             """,
             conn,
         )
-    return df["account"].dropna().tolist()
+
+    finally:
+
+        conn.close()
+
+
+# --------------------------------------------------
+# Tweet Count
+# --------------------------------------------------
+
+
+def tweet_count():
+
+    conn = get_connection()
+
+    try:
+
+        row = conn.execute(
+            """
+            SELECT COUNT(*)
+            FROM tweets
+            """
+        ).fetchone()
+
+        return row[0]
+
+    finally:
+
+        conn.close()

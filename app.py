@@ -1,10 +1,16 @@
+"""
+SUPER CURVE TERMINAL
+Streamlit App
+"""
+
 import streamlit as st
 
 from src.rag import RAGEngine
 
-# -----------------------------
-# Page Config
-# -----------------------------
+
+# -------------------------------------------------
+# Page
+# -------------------------------------------------
 
 st.set_page_config(
     page_title="SUPER CURVE TERMINAL",
@@ -12,62 +18,112 @@ st.set_page_config(
     layout="wide",
 )
 
-# -----------------------------
-# Title
-# -----------------------------
-
-st.title("📈 SUPER CURVE TERMINAL")
-
-st.caption(
-    "Semantic Search + FAISS + RAG"
-)
-
-# -----------------------------
-# RAG Engine
-# -----------------------------
+# -------------------------------------------------
+# Cache
+# -------------------------------------------------
 
 @st.cache_resource
-def load_rag():
-    return RAGEngine()
+def load_engine():
+    return RAGEngine(top_k=10)
 
 
-rag = load_rag()
+engine = load_engine()
 
-# -----------------------------
-# Search Box
-# -----------------------------
+# -------------------------------------------------
+# Header
+# -------------------------------------------------
+
+st.title("📈 SUPER CURVE TERMINAL")
+st.caption("Playwright × SQLite × Embedding × RAG")
+
+# -------------------------------------------------
+# Input
+# -------------------------------------------------
 
 question = st.text_input(
-    "検索",
-    placeholder="例：GEXについて何と言ってた？",
+    "質問",
+    placeholder="例：GEXについて何と言ってた？"
 )
 
-# -----------------------------
+# -------------------------------------------------
 # Search
-# -----------------------------
+# -------------------------------------------------
 
 if question:
 
-    with st.spinner("検索中..."):
+    with st.spinner("Searching..."):
+        result = engine.answer(question)
 
-        result = rag.answer(question)
+    df = result["results"]
 
-    st.divider()
+    st.subheader("Semantic Search")
 
-    st.subheader("📄 Context")
+    if df.empty:
 
-    st.text(result["context"])
+        st.warning("検索結果がありません。")
+
+    else:
+
+        show = df[
+            [
+                "created_at",
+                "score",
+                "account",
+                "text",
+                "url",
+            ]
+        ].copy()
+
+        show.columns = [
+            "Date",
+            "Score",
+            "Account",
+            "Tweet",
+            "URL",
+        ]
+
+        st.dataframe(
+            show,
+            use_container_width=True,
+            hide_index=True,
+        )
+
+    st.subheader("RAG Context")
+
+    st.text_area(
+        label="",
+        value=result["context"],
+        height=500,
+    )
 
 else:
 
     st.info("質問を入力してください。")
 
-# -----------------------------
-# Footer
-# -----------------------------
+# -------------------------------------------------
+# Sidebar
+# -------------------------------------------------
 
-st.divider()
+st.sidebar.title("SUPER CURVE TERMINAL")
 
-st.caption(
-    "SUPER CURVE TERMINAL v0.1"
-)
+pipeline = """
+### Pipeline
+
+X
+↓
+Playwright
+↓
+Parser
+↓
+SQLite
+↓
+Embeddings
+↓
+Semantic Search
+↓
+RAG
+"""
+
+st.sidebar.markdown(pipeline)
+
+st.sidebar.success("System Ready")
