@@ -4,6 +4,8 @@ pandas>=2.2
 numpy>=2.0
 
 sentence-transformers>=5.0
+transformers>=4.53
+
 faiss-cpu>=1.11
 
 scikit-learn
