@@ -4,6 +4,8 @@ scripts/check_compile.py
 SUPER CURVE TERMINAL
 Compile Check Script
 
+主要Pythonファイルを一括で py_compile する。
+
 Usage
 -----
 python scripts/check_compile.py
@@ -20,8 +22,11 @@ ROOT_DIR = Path(__file__).resolve().parent.parent
 
 
 TARGETS = [
+    # Root scripts
     "app.py",
     "update.py",
+
+    # Core modules
     "src/archive_importer.py",
     "src/update_engine.py",
     "src/config.py",
@@ -31,9 +36,14 @@ TARGETS = [
     "src/search.py",
     "src/build_embeddings.py",
     "src/tweet_importer.py",
+
+    # Utility scripts
     "scripts/init_db.py",
     "scripts/import_archive.py",
     "scripts/save_x_login.py",
+    "scripts/check_storage_state.py",
+    "scripts/test_live_update.py",
+    "scripts/check_compile.py",
 ]
 
 
