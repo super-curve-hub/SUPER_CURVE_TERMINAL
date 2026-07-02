@@ -1,42 +1,21 @@
-"""
-logger.py
-
-SUPER CURVE TERMINAL
-Logging Utility
-"""
-
 from __future__ import annotations
 
 import logging
 from pathlib import Path
 
-from src.config import (
-    LOG_DIR,
-    LOG_FILE,
-    LOG_LEVEL,
-)
+from src.config import LOG_DIR, LOG_FILE, LOG_LEVEL
 
-# ログディレクトリ作成
-Path(LOG_DIR).mkdir(
-    parents=True,
-    exist_ok=True,
-)
 
-_FORMAT = "%(asctime)s | %(levelname)-8s | %(name)s | %(message)s"
-_DATEFMT = "%Y-%m-%d %H:%M:%S"
-
-_configured = False
+_CONFIGURED = False
 
 
 def configure_logging() -> None:
-    """
-    ログ設定（初回のみ）
-    """
+    global _CONFIGURED
 
-    global _configured
-
-    if _configured:
+    if _CONFIGURED:
         return
+
+    Path(LOG_DIR).mkdir(parents=True, exist_ok=True)
 
     level = getattr(
         logging,
@@ -45,8 +24,8 @@ def configure_logging() -> None:
     )
 
     formatter = logging.Formatter(
-        fmt=_FORMAT,
-        datefmt=_DATEFMT,
+        fmt="%(asctime)s | %(levelname)-8s | %(name)s | %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
     )
 
     file_handler = logging.FileHandler(
@@ -59,22 +38,14 @@ def configure_logging() -> None:
     console_handler.setFormatter(formatter)
 
     root = logging.getLogger()
-
     root.setLevel(level)
-
     root.handlers.clear()
-
     root.addHandler(file_handler)
     root.addHandler(console_handler)
 
-    _configured = True
+    _CONFIGURED = True
 
 
 def get_logger(name: str) -> logging.Logger:
-    """
-    Logger取得
-    """
-
     configure_logging()
-
     return logging.getLogger(name)
